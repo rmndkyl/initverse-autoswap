@@ -87,11 +87,11 @@ function displayBanner() {
 // Load accounts from JSON file
 function loadAccounts() {
     try {
-        const data = fs.readFileSync('privateKeys.json', 'utf-8');
+        const data = fs.readFileSync('JS_privateKeys.json', 'utf-8');
         const accounts = JSON.parse(data);
         
         if (!Array.isArray(accounts)) {
-            throw new Error('privateKeys.json must contain an array of account objects');
+            throw new Error('JS_privateKeys.json must contain an array of account objects');
         }
         
         accounts.forEach((acc, index) => {
@@ -102,7 +102,7 @@ function loadAccounts() {
         
         return accounts;
     } catch (error) {
-        console.error(chalk.red('Error loading privateKeys.json:'), error.message);
+        console.error(chalk.red('Error loading JS_privateKeys.json:'), error.message);
         process.exit(1);
     }
 }
