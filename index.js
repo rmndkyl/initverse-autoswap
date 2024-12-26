@@ -6,16 +6,17 @@ const chalk = require('chalk');
 const CONFIG = {
     TOTAL_TRANSACTIONS: 144,
     DELAY_MINUTES: 1,
-    SWAP_AMOUNT: "0.0001",
+    SWAP_AMOUNT: "0.001",
     RPC_URL: "https://rpc-testnet.inichain.com",
     ROUTER_ADDRESS: "0x4ccB784744969D9B63C15cF07E622DDA65A88Ee7",
     TOKEN_PATHS: [
         "0xfbecae21c91446f9c7b87e4e5869926998f99ffe",
         "0xcf259bca0315c6d32e877793b6a10e97e7647fde"
     ],
-    SLIPPAGE: 10,
+    SLIPPAGE: 15,
     GAS_LIMIT: 300000,
-    DEADLINE_MINUTES: 20
+    DEADLINE_MINUTES: 20,
+    ACCOUNT_DELAY_MINUTES: 5 // Delay between switching accounts
 };
 
 // Contract ABI
@@ -40,7 +41,7 @@ const BANNER = {
         'community Telegram channel: https://t.me/layerairdrop',
         'community Telegram group: https://t.me/layerairdropdiskusi',
         '==============================================',
-        'INITVERSE SCRIPT AUTO SWAP',
+        'INITVERSE SCRIPT AUTO SWAP (MULTI-ACCOUNT)',
         '\ncreated by: https://github.com/rmndkyl',
         '=============================================='
     ]
@@ -51,7 +52,7 @@ async function sleep(minutes) {
     return new Promise(resolve => setTimeout(resolve, minutes * 60 * 1000));
 }
 
-async function countdown(minutes) {
+async function countdown(minutes, message = 'Next transaction') {
     const totalSeconds = minutes * 60;
     for (let i = totalSeconds; i > 0; i--) {
         process.stdout.clearLine();
@@ -59,7 +60,7 @@ async function countdown(minutes) {
         const mins = Math.floor(i / 60);
         const secs = i % 60;
         process.stdout.write(
-            chalk.cyan(`Next transaction in: ${chalk.bold(mins)}m ${chalk.bold(secs)}s`)
+            chalk.cyan(`${message} in: ${chalk.bold(mins)}m ${chalk.bold(secs)}s`)
         );
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
@@ -83,29 +84,36 @@ function displayBanner() {
     BANNER.info.forEach(line => console.log(chalk.cyanBright(line)));
 }
 
-// Main Swap Function
-async function swapExactETHForTokens() {
-    // Read credentials
-    let privateKey, walletAddress;
+// Load accounts from JSON file
+function loadAccounts() {
     try {
-        [privateKey, walletAddress] = fs.readFileSync('token.txt', 'utf-8').trim().split(',');
+        const data = fs.readFileSync('privateKeys.json', 'utf-8');
+        const accounts = JSON.parse(data);
+        
+        if (!Array.isArray(accounts)) {
+            throw new Error('privateKeys.json must contain an array of account objects');
+        }
+        
+        accounts.forEach((acc, index) => {
+            if (!acc.privateKey || !acc.address) {
+                throw new Error(`Invalid account format at index ${index}`);
+            }
+        });
+        
+        return accounts;
     } catch (error) {
-        console.error(chalk.red('Error reading token.txt file:'), error.message);
+        console.error(chalk.red('Error loading privateKeys.json:'), error.message);
         process.exit(1);
     }
+}
 
-    // Setup provider and contract
-    const provider = new ethers.JsonRpcProvider(CONFIG.RPC_URL);
-    const wallet = new ethers.Wallet(privateKey, provider);
+// Main Swap Function for Single Account
+async function performSwaps(wallet, walletAddress, accountIndex, totalAccounts) {
     const contract = new ethers.Contract(CONFIG.ROUTER_ADDRESS, ROUTER_ABI, wallet);
-
-    // Display initial information
-    displayBanner();
-    console.log(chalk.green('\n=== Swap Script Started ==='));
+    console.log(chalk.yellow(`\nStarting transactions for account ${accountIndex + 1}/${totalAccounts}`));
     console.log(chalk.yellow('Wallet Address:', walletAddress));
     console.log(chalk.yellow('Total Transactions:', CONFIG.TOTAL_TRANSACTIONS));
 
-    // Execute transactions
     for (let i = 0; i < CONFIG.TOTAL_TRANSACTIONS; i++) {
         try {
             console.log(chalk.cyan('\nCurrent Time:', getFormattedDateTime()));
@@ -149,10 +157,35 @@ async function swapExactETHForTokens() {
     }
 }
 
+// Main Multi-Account Function
+async function runMultiAccountSwaps() {
+    displayBanner();
+    
+    const accounts = loadAccounts();
+    const provider = new ethers.JsonRpcProvider(CONFIG.RPC_URL);
+    
+    console.log(chalk.green('\n=== Multi-Account Swap Script Started ==='));
+    console.log(chalk.yellow(`Total Accounts: ${accounts.length}`));
+
+    for (let i = 0; i < accounts.length; i++) {
+        const { privateKey, address } = accounts[i];
+        const wallet = new ethers.Wallet(privateKey, provider);
+        
+        // Perform swaps for current account
+        await performSwaps(wallet, address, i, accounts.length);
+        
+        // Delay between accounts
+        if (i < accounts.length - 1) {
+            console.log(chalk.yellow(`\nSwitching to next account in ${CONFIG.ACCOUNT_DELAY_MINUTES} minutes...`));
+            await countdown(CONFIG.ACCOUNT_DELAY_MINUTES, 'Next account');
+        }
+    }
+}
+
 // Script Execution
-swapExactETHForTokens()
+runMultiAccountSwaps()
     .then(() => {
-        console.log(chalk.green("\n=== All transactions completed successfully ==="));
+        console.log(chalk.green("\n=== All accounts processed successfully ==="));
         process.exit(0);
     })
     .catch(error => {
