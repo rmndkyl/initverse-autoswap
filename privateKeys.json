@@ -1,14 +1,9 @@
-[
-    {
-        "privateKey": "pvkey1",
-        "address": "address1"
-    },
-    {
-        "privateKey": "pvkey2",
-        "address": "address2"
-    },
-    {
-        "privateKey": "pvkey3",
-        "address": "address3"
-    }
-]
+{
+    "private_keys": [
+        "pvkey1",
+        "pvkey2",
+        "pvkey3"
+    ],
+    "gas_limit": 300000,
+    "gas_price_gwei": 15
+}
