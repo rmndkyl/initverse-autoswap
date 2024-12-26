@@ -5,7 +5,7 @@ const chalk = require('chalk');
 // Configuration Constants
 const CONFIG = {
     TOTAL_TRANSACTIONS: 144,
-    DELAY_MINUTES: 1,
+    DELAY_MINUTES: 10,
     SWAP_AMOUNT: "0.001",
     RPC_URL: "https://rpc-testnet.inichain.com",
     ROUTER_ADDRESS: "0x4ccB784744969D9B63C15cF07E622DDA65A88Ee7",
