@@ -1,0 +1,14 @@
+[
+    {
+        "privateKey": "pvkey1",
+        "address": "address1"
+    },
+    {
+        "privateKey": "pvkey2",
+        "address": "address2"
+    },
+    {
+        "privateKey": "pvkey3",
+        "address": "address3"
+    }
+]
