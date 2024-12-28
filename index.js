@@ -84,7 +84,6 @@ function displayBanner() {
     BANNER.info.forEach(line => console.log(chalk.cyanBright(line)));
 }
 
-// Load accounts from JSON file
 function loadAccounts() {
     try {
         const data = fs.readFileSync('JS_privateKeys.json', 'utf-8');
@@ -107,88 +106,85 @@ function loadAccounts() {
     }
 }
 
-// Main Swap Function for Single Account
-async function performSwaps(wallet, walletAddress, accountIndex, totalAccounts) {
+// Single Swap Function
+async function performSingleSwap(contract, walletAddress, accountIndex, transactionIndex) {
+    console.log(chalk.cyan(`\n[Account ${accountIndex + 1}] Current Time:`, getFormattedDateTime()));
+    console.log(chalk.magenta(`[Account ${accountIndex + 1}] Transaction Progress: ${transactionIndex + 1}/${CONFIG.TOTAL_TRANSACTIONS}`));
+
+    try {
+        const swapAmountWei = ethers.parseEther(CONFIG.SWAP_AMOUNT);
+        const amountsOut = await contract.getAmountsOut(swapAmountWei, CONFIG.TOKEN_PATHS);
+        const amountOutMin = ((amountsOut[1] * BigInt(100 - CONFIG.SLIPPAGE)) / 100n).toString();
+        const deadline = Math.floor(Date.now() / 1000) + (CONFIG.DEADLINE_MINUTES * 60);
+
+        const tx = await contract.swapExactETHForTokens(
+            amountOutMin,
+            CONFIG.TOKEN_PATHS,
+            walletAddress,
+            deadline,
+            {
+                value: swapAmountWei,
+                gasLimit: CONFIG.GAS_LIMIT
+            }
+        );
+
+        console.log(chalk.green(`[Account ${accountIndex + 1}] Transaction sent:`, tx.hash));
+        console.log(chalk.blue(`[Account ${accountIndex + 1}] Amount:`, CONFIG.SWAP_AMOUNT, "INIT"));
+
+        const receipt = await tx.wait();
+        console.log(chalk.green(`[Account ${accountIndex + 1}] Transaction confirmed! Gas used:`, receipt.gasUsed.toString()));
+    } catch (error) {
+        console.error(chalk.red(`[Account ${accountIndex + 1}] Transaction ${transactionIndex + 1} failed:`), error.message);
+    }
+}
+
+// Account Swap Handler
+async function handleAccountSwaps(wallet, walletAddress, accountIndex, totalAccounts) {
     const contract = new ethers.Contract(CONFIG.ROUTER_ADDRESS, ROUTER_ABI, wallet);
-    console.log(chalk.yellow(`\nStarting transactions for account ${accountIndex + 1}/${totalAccounts}`));
-    console.log(chalk.yellow('Wallet Address:', walletAddress));
-    console.log(chalk.yellow('Total Transactions:', CONFIG.TOTAL_TRANSACTIONS));
+    console.log(chalk.yellow(`\n[Account ${accountIndex + 1}/${totalAccounts}] Starting transactions`));
+    console.log(chalk.yellow(`[Account ${accountIndex + 1}] Wallet Address:`, walletAddress));
 
     for (let i = 0; i < CONFIG.TOTAL_TRANSACTIONS; i++) {
-        try {
-            console.log(chalk.cyan('\nCurrent Time:', getFormattedDateTime()));
-            console.log(chalk.magenta(`Transaction Progress: ${i + 1}/${CONFIG.TOTAL_TRANSACTIONS}`));
-
-            // Prepare transaction
-            const swapAmountWei = ethers.parseEther(CONFIG.SWAP_AMOUNT);
-            const amountsOut = await contract.getAmountsOut(swapAmountWei, CONFIG.TOKEN_PATHS);
-            const amountOutMin = ((amountsOut[1] * BigInt(100 - CONFIG.SLIPPAGE)) / 100n).toString();
-            const deadline = Math.floor(Date.now() / 1000) + (CONFIG.DEADLINE_MINUTES * 60);
-
-            // Execute swap
-            const tx = await contract.swapExactETHForTokens(
-                amountOutMin,
-                CONFIG.TOKEN_PATHS,
-                walletAddress,
-                deadline,
-                {
-                    value: swapAmountWei,
-                    gasLimit: CONFIG.GAS_LIMIT
-                }
-            );
-
-            console.log(chalk.green("Transaction sent:", tx.hash));
-            console.log(chalk.blue("Amount:", CONFIG.SWAP_AMOUNT, "INIT"));
-
-            // Wait for confirmation and display results
-            const receipt = await tx.wait();
-            console.log(chalk.green("Transaction confirmed! Gas used:", receipt.gasUsed.toString()));
-
-            // Handle delay between transactions
-            if (i < CONFIG.TOTAL_TRANSACTIONS - 1) {
-                console.log(chalk.yellow(`Waiting ${CONFIG.DELAY_MINUTES} minutes until next transaction...\n`));
-                await countdown(CONFIG.DELAY_MINUTES);
-            }
-        } catch (error) {
-            console.error(chalk.red(`Transaction ${i + 1} failed:`), error.message);
-            console.log(chalk.yellow('Retrying in 1 minute...'));
-            await sleep(1);
+        await performSingleSwap(contract, walletAddress, accountIndex, i);
+        
+        if (i < CONFIG.TOTAL_TRANSACTIONS - 1) {
+            await sleep(CONFIG.DELAY_MINUTES);
         }
     }
 }
 
-// Main Multi-Account Function
-async function runMultiAccountSwaps() {
+// Main Multi-Account Concurrent Function
+async function runConcurrentSwaps() {
     displayBanner();
     
     const accounts = loadAccounts();
     const provider = new ethers.JsonRpcProvider(CONFIG.RPC_URL);
     
-    console.log(chalk.green('\n=== Multi-Account Swap Script Started ==='));
+    console.log(chalk.green('\n=== Concurrent Multi-Account Swap Script Started ==='));
     console.log(chalk.yellow(`Total Accounts: ${accounts.length}`));
 
-    for (let i = 0; i < accounts.length; i++) {
-        const { privateKey, address } = accounts[i];
-        const wallet = new ethers.Wallet(privateKey, provider);
-        
-        // Perform swaps for current account
-        await performSwaps(wallet, address, i, accounts.length);
-        
-        // Delay between accounts
-        if (i < accounts.length - 1) {
-            console.log(chalk.yellow(`\nSwitching to next account in ${CONFIG.ACCOUNT_DELAY_MINUTES} minutes...`));
-            await countdown(CONFIG.ACCOUNT_DELAY_MINUTES, 'Next account');
-        }
+    // Create an array of promises for each account
+    const accountPromises = accounts.map((account, index) => {
+        const wallet = new ethers.Wallet(account.privateKey, provider);
+        return handleAccountSwaps(wallet, account.address, index, accounts.length);
+    });
+
+    // Run all accounts concurrently
+    try {
+        await Promise.all(accountPromises);
+        console.log(chalk.green("\n=== All accounts processed successfully ==="));
+    } catch (error) {
+        console.error(chalk.red("\nScript execution error:"), error.message);
     }
 }
 
 // Script Execution
-runMultiAccountSwaps()
+runConcurrentSwaps()
     .then(() => {
-        console.log(chalk.green("\n=== All accounts processed successfully ==="));
+        console.log(chalk.green("\n=== Script completed ==="));
         process.exit(0);
     })
     .catch(error => {
-        console.error(chalk.red("\nScript execution error:"), error.message);
+        console.error(chalk.red("\nFatal error:"), error.message);
         process.exit(1);
     });
