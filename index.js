@@ -138,7 +138,7 @@ async function performSwaps(wallet, walletAddress, accountIndex, totalAccounts) 
             );
 
             console.log(chalk.green("Transaction sent:", tx.hash));
-            console.log(chalk.blue("Amount:", CONFIG.SWAP_AMOUNT, "ETH"));
+            console.log(chalk.blue("Amount:", CONFIG.SWAP_AMOUNT, "INIT"));
 
             // Wait for confirmation and display results
             const receipt = await tx.wait();
